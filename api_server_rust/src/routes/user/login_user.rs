@@ -1,4 +1,8 @@
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{
+    cookie::{Cookie, SameSite},
+    web, HttpResponse, Responder,
+};
+use serde::Serialize;
 
 use crate::{
     models::user::{UserReqBody, UserWithPassword},
@@ -6,6 +10,12 @@ use crate::{
     AppState,
 };
 use validator::Validate;
+
+#[derive(Serialize)]
+struct LoginResponse {
+    #[serde(rename = "accessToken")]
+    access_token: String,
+}
 
 pub async fn login_user(
     data: web::Data<AppState>,
@@ -43,7 +53,7 @@ pub async fn login_user(
 
     let valid = bcrypt::verify(
         new_user.0.password,
-        &existing_user.unwrap().unwrap().password,
+        &existing_user.as_ref().unwrap().as_ref().unwrap().password,
     );
 
     if valid.is_err() {
@@ -57,6 +67,26 @@ pub async fn login_user(
             message: "Wrong password".to_string(),
         });
     }
+    let token = crate::token::generate_token::generate_token(
+        &existing_user.as_ref().unwrap().as_ref().unwrap().username,
+        existing_user.as_ref().unwrap().as_ref().unwrap().id,
+        &data.access_token_secret,
+    );
 
-    HttpResponse::Ok().json(())
+    if token.is_err() {
+        return HttpResponse::InternalServerError().json(GeneralError {
+            message: "Issue generating the token".to_string(),
+        });
+    }
+
+    let cookie = Cookie::build("accessToken", token.as_ref().unwrap())
+        .path("/")
+        .secure(true)
+        .http_only(true)
+        .same_site(SameSite::None)
+        .finish();
+
+    HttpResponse::Ok().cookie(cookie).json(LoginResponse {
+        access_token: token.unwrap(),
+    })
 }
