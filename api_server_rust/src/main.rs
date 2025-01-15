@@ -1,9 +1,15 @@
-use actix_web::{middleware::Logger, web, web::Data, App, HttpServer};
+use actix_web::{
+    middleware::{from_fn, Logger},
+    web::{self, Data},
+    App, HttpServer,
+};
 use log::info;
+use middleware::auth_middleware;
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use std::env;
 
 pub mod helpers;
+pub mod middleware;
 pub mod models;
 pub mod responses;
 pub mod routes;
@@ -47,6 +53,14 @@ async fn main() -> std::io::Result<()> {
                     .route(
                         "/login",
                         web::post().to(routes::user::login_user::login_user),
+                    )
+                    .service(
+                        web::scope("/protected")
+                            .wrap(from_fn(auth_middleware::auth_middleware))
+                            .route(
+                                "/currentUser",
+                                web::get().to(routes::user::current_user::get_current_user),
+                            ),
                     ),
             )
     })
