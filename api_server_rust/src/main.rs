@@ -6,7 +6,8 @@ use actix_web::{
 use log::info;
 use middleware::auth_middleware;
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
-use std::env;
+use std::{env, sync::Arc};
+use tokio::sync::Mutex;
 
 pub mod helpers;
 pub mod middleware;
@@ -17,7 +18,14 @@ pub mod token;
 
 pub struct AppState {
     pub db: Pool<Postgres>,
+    pub ts1: Pool<Postgres>,
+    pub ts2: Pool<Postgres>,
     pub access_token_secret: String,
+    shared_state: Arc<Mutex<SharedState>>,
+}
+
+struct SharedState {
+    counter: u32,
 }
 
 #[actix_web::main]
@@ -29,10 +37,24 @@ async fn main() -> std::io::Result<()> {
     let database_url = env::var("DATABASE_URL").expect("Issue finding the db url from env files");
     let access_token_secret =
         env::var("ACCESS_SECRET").expect("Issue finding the access token secret from env files");
+    let ts1_url = env::var("DATABASE_URL_TS1").expect("Issue finding the db url for ts1");
+    let ts2_url = env::var("DATABASE_URL_TS2").expect("Issue finding the db url for ts2");
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&database_url)
+        .await
+        .expect("Issue connecting to the database");
+
+    let ts1 = PgPoolOptions::new()
+        .max_connections(3)
+        .connect(&ts1_url)
+        .await
+        .expect("Issue connecting to the database");
+
+    let ts2 = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&ts2_url)
         .await
         .expect("Issue connecting to the database");
 
@@ -42,7 +64,10 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::default())
             .app_data(Data::new(AppState {
                 db: pool.clone(),
+                ts1: ts1.clone(),
+                ts2: ts2.clone(),
                 access_token_secret: access_token_secret.clone(),
+                shared_state: Arc::new(Mutex::new(SharedState { counter: 1 })),
             }))
             .service(
                 web::scope("/api/v1/user")
@@ -62,6 +87,13 @@ async fn main() -> std::io::Result<()> {
                                 web::get().to(routes::user::current_user::get_current_user),
                             ),
                     ),
+            )
+            .service(
+                web::scope("/api/v1/url").service(
+                    web::scope("/protected")
+                        .wrap(from_fn(auth_middleware::auth_middleware))
+                        .route("/create", web::post().to(routes::urls::create::create_url)),
+                ),
             )
     })
     .bind(("127.0.0.1", 8000))?

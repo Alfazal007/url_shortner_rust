@@ -355,6 +355,7 @@ dependencies = [
  "log",
  "serde",
  "sqlx",
+ "tokio",
  "validator",
 ]
 
