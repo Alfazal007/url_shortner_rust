@@ -5,6 +5,7 @@ use actix_web::{
 };
 use log::info;
 use middleware::auth_middleware;
+use redis::Client;
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use std::{env, sync::Arc};
 use tokio::sync::Mutex;
@@ -22,6 +23,7 @@ pub struct AppState {
     pub ts2: Pool<Postgres>,
     pub access_token_secret: String,
     shared_state: Arc<Mutex<SharedState>>,
+    redis_client: Client,
 }
 
 struct SharedState {
@@ -39,6 +41,9 @@ async fn main() -> std::io::Result<()> {
         env::var("ACCESS_SECRET").expect("Issue finding the access token secret from env files");
     let ts1_url = env::var("DATABASE_URL_TS1").expect("Issue finding the db url for ts1");
     let ts2_url = env::var("DATABASE_URL_TS2").expect("Issue finding the db url for ts2");
+
+    let redis_client =
+        redis::Client::open("redis://127.0.0.1/").expect("Issue connecting to redis");
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
@@ -68,6 +73,7 @@ async fn main() -> std::io::Result<()> {
                 ts2: ts2.clone(),
                 access_token_secret: access_token_secret.clone(),
                 shared_state: Arc::new(Mutex::new(SharedState { counter: 1 })),
+                redis_client: redis_client.clone(),
             }))
             .service(
                 web::scope("/api/v1/user")
