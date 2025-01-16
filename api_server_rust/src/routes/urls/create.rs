@@ -60,8 +60,6 @@ pub async fn create_url(
     .fetch_optional(&data.db)
     .await;
 
-    println!("{:?}", url_db_insert_result);
-
     if url_db_insert_result.is_err() {
         return HttpResponse::InternalServerError().json(GeneralError {
             message: "Issue writing to the database".to_string(),

@@ -95,6 +95,7 @@ async fn main() -> std::io::Result<()> {
                         .route("/create", web::post().to(routes::urls::create::create_url)),
                 ),
             )
+            .route("/{hash}", web::get().to(routes::urls::get_url::get_url))
     })
     .bind(("127.0.0.1", 8000))?
     .run()
